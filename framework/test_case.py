@@ -25,6 +25,8 @@ class TestCase:
         self.uses_optional_feature = config.get("uses_optional_feature", False) # Does this case use a feature not required to be supported?
         self.uses_extension = config.get("uses_extension", False) # Does this case use an extension to the standard?
         self.expected_outcome = create_checker(config.get("expected"))
+        self.requires_revision = config.get("requires_revision", "")
+        self.feature_sections = config.get("feature_sections", [])
 
     def execute_with(self, processor : Processor, tests_path : str, results_path: str) -> None:
         result_location = self.location.replace(tests_path, results_path)
@@ -47,7 +49,9 @@ class TestCase:
             outcome.commands,
             outcome.stdout,
             outcome.stderr,
-            self.allowed_not_to_detect or self.uses_optional_feature or self.uses_extension)
+            self.allowed_not_to_detect or self.uses_optional_feature or self.uses_extension,
+            self.requires_revision,
+            self.feature_sections)
         with open(os.path.join(result_location, "outcome.txt"), 'w') as output:
             output.write(repr(result))
         return result
