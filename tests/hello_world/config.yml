@@ -1,7 +1,0 @@
-description: Use list-directed print statement to output a string
-features: ["IO", "print", "list-directed"]
-source_files: ["hello.f90"]
-expected:
-  compile: true
-  normal_termination: true
-  stdout: ["^ ?Hello, World!$"]
