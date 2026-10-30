@@ -1,4 +1,8 @@
 description: Misspell the end statement
+requires_revision: "Fortran 77"
+feature_sections:
+  - "2.2"
+  - "2.4"
 features: []
 source_files: ["main.f90"]
 expected:

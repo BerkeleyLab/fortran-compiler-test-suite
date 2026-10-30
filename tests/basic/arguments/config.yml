@@ -1,4 +1,7 @@
 description: Read an argument from the command line
+requires_revision: "Fortran 2003"
+feature_sections:
+  - "13.7"
 features: ["command-line", "IO"]
 source_files: ["hello_cmd.f90"]
 command_line_arguments: ["hello"]

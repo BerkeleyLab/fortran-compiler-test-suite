@@ -1,4 +1,7 @@
 description: Use this_image
+requires_revision: "Fortran 2008"
+feature_sections:
+  - "13.7"
 features: ["IO", "print", "list-directed", "coarray"]
 source_files: ["main.f90"]
 expected:

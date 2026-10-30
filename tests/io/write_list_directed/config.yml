@@ -1,4 +1,8 @@
 description: Use list-directed write statement with default output unit to output a string
+requires_revision: "Fortran 77"
+feature_sections:
+  - "12.8"
+  - "12.9"
 features: ["IO", "write", "list-directed", "default-output-unit"]
 source_files: ["goodbye.f90"]
 expected:

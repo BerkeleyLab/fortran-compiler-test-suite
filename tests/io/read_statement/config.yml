@@ -1,4 +1,8 @@
 description: Read an input from the default unit
+requires_revision: "Fortran 77"
+feature_sections:
+  - "12.8"
+  - "12.9"
 features: ["IO", "list-directed"]
 source_files: ["read.f90"]
 standard_input: "42"

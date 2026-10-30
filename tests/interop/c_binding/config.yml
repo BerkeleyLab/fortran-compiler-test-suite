@@ -1,4 +1,8 @@
 description: Call C from Fortran
+requires_revision: "Fortran 2003"
+feature_sections:
+  - "15.1"
+  - "15.3"
 features: ["C-interop"]
 source_files: ["main.f90", "c_routine.c"]
 expected:

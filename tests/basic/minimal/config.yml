@@ -1,4 +1,7 @@
 description: The simplest possible program
+requires_revision: "Fortran 77"
+feature_sections:
+  - "3.6"
 features: []
 source_files: ["end.f90"]
 expected:

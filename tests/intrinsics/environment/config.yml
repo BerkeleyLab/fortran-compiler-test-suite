@@ -1,4 +1,7 @@
 description: Read an environment variable
+requires_revision: "Fortran 2003"
+feature_sections:
+  - "13.7"
 features: ["IO", "environment-variable"]
 source_files: ["get_env.f90"]
 environment_variables:

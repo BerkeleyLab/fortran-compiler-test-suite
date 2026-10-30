@@ -1,4 +1,7 @@
 description: The simplest possible error termination
+requires_revision: "Fortran 2008"
+feature_sections:
+  - "8.4"
 features: ["error stop"]
 source_files: ["error_stop.f90"]
 expected:
