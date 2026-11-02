@@ -9,7 +9,7 @@ This repository contains a framework and suite of cases for testing a Fortran co
 # Usage
 
 ```text
-usage: run_tests.py [-h] [-i INPUT] [-o OUTPUT] [-c COMPILER] [-C C_COMPILER] [-v] [-f FLAGS [FLAGS ...]]
+usage: run_tests.py [-h] [-i INPUT] [-o OUTPUT] [-c COMPILER] [-C C_COMPILER] [-v] [-f FLAGS [FLAGS ...]] [--sort-by {directory,feature,revision,section}]
 
 Run the Fortran compiler test suite
 
@@ -18,7 +18,7 @@ options:
   -i INPUT, --input INPUT
                         Directory to search for the tests (default: tests)
   -o OUTPUT, --output OUTPUT
-                        Where to put the test results (default: results)
+                        Where to put the test results (default: results/<compiler>)
   -c COMPILER, --compiler COMPILER
                         The compiler to test (default: gfortran)
   -C C_COMPILER, --c-compiler C_COMPILER
@@ -31,7 +31,54 @@ options:
                         (default: 0)
   -f FLAGS [FLAGS ...], --flags FLAGS [FLAGS ...]
                         The default flags to use for compilation (default: None)
+  --sort-by {directory,feature,revision,section}
+                        Sort test cases by the given key (default: directory)
 
+Results are stored in `results/<compiler>/` by default (e.g., `results/gfortran/`).
+Use `aggregate_results.py` to generate summary tables across compilers.
+
+## Sorting
+
+The `--sort-by` option controls how test cases are ordered during execution:
+
+- `directory` (default): Sort by test directory path
+- `feature`: Sort by features list
+- `revision`: Sort by required Fortran revision
+- `section`: Sort by feature sections
+
+Note: Sorting affects only the order of execution, not the output organization.
+Use `aggregate_results.py` for organized reporting.
+
+# Aggregate Results
+
+The `aggregate_results.py` script collects results from multiple compiler runs and generates comparison tables:
+
+```text
+usage: aggregate_results.py [-h] [--group-by {directory,feature,revision}]
+                            [--filter {all,passed,failed}]
+                            [--format {table,markdown,csv,json}]
+                            RESULT_DIR [RESULT_DIR ...]
+
+options:
+  --group-by {directory,feature,revision}
+                        How to group the results (default: directory)
+  --filter {all,passed,failed}
+                        Which results to include (default: all)
+  --format {table,markdown,csv,json}
+                        Output format (default: table)
+```
+
+Examples:
+
+```bash
+# Group by directory (basic, io, control, etc.)
+python aggregate_results.py results/gfortran results/intel --group-by directory --format markdown
+
+# Group by feature (tests count for each feature they have)
+python aggregate_results.py results/gfortran --group-by feature
+
+# Compare multiple compilers with markdown output
+python aggregate_results.py results/gfortran results/intel results/flang --format markdown
 ```
 
 Note that the detailed information for each test case is saved in its output folder in a file named `outcome.txt`.

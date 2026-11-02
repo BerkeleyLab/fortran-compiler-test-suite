@@ -3,6 +3,9 @@
 This is the entry point for running the compiler test framework.
 
 Usage: run_tests.py [-h] [-i INPUT] [-o OUTPUT] [-c COMPILER] [-C C_COMPILER] [-v] [-f FLAGS [FLAGS ...]] [--sort-by {directory,feature,revision,section}]
+
+Results are stored in results/<compiler>/ by default (e.g., results/gfortran/).
+Use aggregate_results.py to generate summary tables across compilers.
 """
 
 import argparse
@@ -31,7 +34,8 @@ parser = argparse.ArgumentParser(
     formatter_class=argparse.ArgumentDefaultsHelpFormatter
 )
 parser.add_argument('-i', '--input', default="tests", help="Directory to search for the tests")
-parser.add_argument('-o', '--output', default="results", help="Where to put the test results")
+parser.add_argument('-o', '--output', default=None,
+                    help="Where to put the test results (default: results/<compiler>)")
 parser.add_argument('-c', '--compiler', default="gfortran", help="The compiler to test")
 parser.add_argument('-C', '--c-compiler', default="", help="The companion C processor")
 parser.add_argument('-v', '--verbose', action='count', default=0, help="""
@@ -48,8 +52,9 @@ args = parser.parse_args(sys.argv[1:] if flag_start == 0 else sys.argv[1:flag_st
 args.flags = flags
 
 processor = Processor(args.compiler, args.c_compiler, args.flags)
-if (os.path.exists(args.output)): shutil.rmtree(args.output)
-os.mkdir(args.output)
+output_path = args.output if args.output else os.path.join("results", args.compiler)
+if (os.path.exists(output_path)): shutil.rmtree(output_path)
+os.mkdir(output_path)
 
 # TODO: filter test cases in some
 test_cases = [create_test_case(root) for root, dirs, files in os.walk(args.input) if is_test_case(root)]
@@ -67,7 +72,7 @@ else:
     test_cases.sort(key=lambda tc: tc.location)
 
 # TODO: run test cases in parallel
-results = [case.execute_with(processor, args.input, args.output) for case in test_cases]
+results = [case.execute_with(processor, args.input, output_path) for case in test_cases]
 
 num_failed = 0
 num_allowed_to_fail = 0
@@ -98,4 +103,5 @@ else:
     print("Failure")
 print("{0} of {1} cases failed, with {2} of them being allowed to fail".format(num_failed, num_cases, num_allowed_to_fail))
 print()
-print("Additional details can be found in the output folder for each test case in a file named `outcome.txt`")
+print(f"Additional details can be found in: {output_path}/")
+print("Use aggregate_results.py to generate summary tables across compilers.")
