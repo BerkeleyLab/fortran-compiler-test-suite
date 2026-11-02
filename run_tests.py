@@ -10,6 +10,7 @@ Use aggregate_results.py to generate summary tables across compilers.
 
 import argparse
 import os
+import pathlib
 import re
 import shutil
 import sys
@@ -54,7 +55,7 @@ args.flags = flags
 processor = Processor(args.compiler, args.c_compiler, args.flags)
 output_path = args.output if args.output else os.path.join("results", args.compiler)
 if (os.path.exists(output_path)): shutil.rmtree(output_path)
-os.mkdir(output_path)
+pathlib.Path(output_path).mkdir(parents=True)
 
 # TODO: filter test cases in some
 test_cases = [create_test_case(root) for root, dirs, files in os.walk(args.input) if is_test_case(root)]
