@@ -9,7 +9,7 @@ This repository contains a framework and suite of cases for testing a Fortran co
 # Usage
 
 ```text
-usage: run_tests.py [-h] [-i INPUT] [-o OUTPUT] [-c COMPILER] [-C C_COMPILER] [-v] [-f FLAGS [FLAGS ...]] [--sort-by {directory,feature,revision,section}]
+usage: run_tests.py [-h] [-i INPUT] [-o OUTPUT] [-c COMPILER] [-C C_COMPILER] [-v] [-f FLAGS [FLAGS ...]]
 
 Run the Fortran compiler test suite
 
@@ -31,8 +31,6 @@ options:
                         (default: 0)
   -f FLAGS [FLAGS ...], --flags FLAGS [FLAGS ...]
                         The default flags to use for compilation (default: None)
-  --sort-by {directory,feature,revision,section}
-                        Sort test cases by the given key (default: directory)
 
 Results are stored in `results/<compiler>/` by default (e.g., `results/gfortran/`).
 Use `aggregate_results.py` to generate summary tables across compilers.
@@ -40,18 +38,6 @@ Use `aggregate_results.py` to generate summary tables across compilers.
 Note that the detailed information for each test case is saved in its output folder in a file named `outcome.txt`.
 A summary of the outcome will be reported to the screen,
 and passing the `-v` option will add increasing levels of detailed output about each test case to the screen output.
-
-## Sorting
-
-The `--sort-by` option controls how test cases are ordered during execution:
-
-- `directory` (default): Sort by test directory path
-- `feature`: Sort by features list
-- `revision`: Sort by required Fortran revision
-- `section`: Sort by feature sections
-
-Note: Sorting affects only the order of execution, not the output organization.
-Use `aggregate_results.py` for organized reporting.
 
 # Aggregate Results
 

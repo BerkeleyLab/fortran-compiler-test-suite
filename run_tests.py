@@ -47,8 +47,6 @@ Passing a third time includes all checks for a test case.
 Passing a fourth time outputs the full detailed report for each test case.
 """)
 parser.add_argument('-f', '--flags', nargs='+', help="The default flags to use for compilation")
-parser.add_argument('--sort-by', choices=['directory', 'feature', 'revision', 'section'], default='directory',
-                    help="Sort test cases by the given key (directory=path, feature=features list, revision=requires_revision, section=feature_sections)")
 args = parser.parse_args(sys.argv[1:] if flag_start == 0 else sys.argv[1:flag_start])
 args.flags = flags
 
@@ -57,20 +55,8 @@ output_path = args.output if args.output else os.path.join("results", args.compi
 if (os.path.exists(output_path)): shutil.rmtree(output_path)
 pathlib.Path(output_path).mkdir(parents=True)
 
-# TODO: filter test cases in some
+# TODO: maybe a way to filter test cases?
 test_cases = [create_test_case(root) for root, dirs, files in os.walk(args.input) if is_test_case(root)]
-
-# Sort test cases according to --sort-by
-sort_key = args.sort_by
-if sort_key == 'feature':
-    test_cases.sort(key=lambda tc: tuple(tc.features) if tc.features else ("",))
-elif sort_key == 'revision':
-    test_cases.sort(key=lambda tc: tc.requires_revision or "")
-elif sort_key == 'section':
-    test_cases.sort(key=lambda tc: tuple(tc.feature_sections) if tc.feature_sections else ("",))
-else:
-    # 'directory' is the default; sort by the location path
-    test_cases.sort(key=lambda tc: tc.location)
 
 # TODO: run test cases in parallel
 results = [case.execute_with(processor, args.input, output_path) for case in test_cases]
