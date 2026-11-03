@@ -82,10 +82,6 @@ Output formats:
 
 # Contributing a Test
 
-> TODO: We still need to figure out a good organization strategy for the test cases.
-> There should be some hierarchy for where test cases go,
-> and a naming convention for the test case folders.
-
 At an appropriate location with the `tests` directory
 
 * create a folder with an appropriate name with contents
@@ -149,6 +145,8 @@ Briefly, it is a file that contains a list of key-value pairs, where the values 
 This framework expects to find the following keys.
 
 * `description`, required - A string that describes the features of the test case
+* `requires_revision`, required - A string that identifies the minimum revision of the Fortran standard that a compiler must conform to in order to successfully pass the test case, i.e. "Fortran 90".
+* `feature_sections`, required - An array of strings that identify the sections of the revision identified containing descriptions of the features used by the test case.
 * `features`, optional - An array of strings identifying various features of the language being tested
 * `source_files`, required - An array of strings identifying the source files, in the order in which they are to be compiled
 * `other_files`, optional - An array of strings identifying any additional files needed by the test case
