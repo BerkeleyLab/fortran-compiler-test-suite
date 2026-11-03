@@ -37,6 +37,10 @@ options:
 Results are stored in `results/<compiler>/` by default (e.g., `results/gfortran/`).
 Use `aggregate_results.py` to generate summary tables across compilers.
 
+Note that the detailed information for each test case is saved in its output folder in a file named `outcome.txt`.
+A summary of the outcome will be reported to the screen,
+and passing the `-v` option will add increasing levels of detailed output about each test case to the screen output.
+
 ## Sorting
 
 The `--sort-by` option controls how test cases are ordered during execution:
@@ -51,22 +55,9 @@ Use `aggregate_results.py` for organized reporting.
 
 # Aggregate Results
 
-The `aggregate_results.py` script collects results from multiple compiler runs and generates comparison tables:
+The `aggregate_results.py` script collects results from multiple compiler runs and generates comparison tables.
 
-```text
-usage: aggregate_results.py [-h] [--group-by {directory,feature,revision}]
-                            [--filter {all,passed,failed}]
-                            [--format {table,markdown,csv,json}]
-                            RESULT_DIR [RESULT_DIR ...]
-
-options:
-  --group-by {directory,feature,revision}
-                        How to group the results (default: directory)
-  --filter {all,passed,failed}
-                        Which results to include (default: all)
-  --format {table,markdown,csv,json}
-                        Output format (default: table)
-```
+**Results must be in the format:** `results/<compiler_name>/...`
 
 Examples:
 
@@ -81,9 +72,13 @@ python aggregate_results.py results/gfortran --group-by feature
 python aggregate_results.py results/gfortran results/intel results/flang --format markdown
 ```
 
-Note that the detailed information for each test case is saved in its output folder in a file named `outcome.txt`.
-A summary of the outcome will be reported to the screen,
-and passing the `-v` option will add increasing levels of detailed output about each test case to the screen output.
+The compiler name is extracted from the directory name (e.g., `results/gfortran/` gives a column named "gfortran").
+
+Output formats:
+- `table` (default): Human-readable table
+- `markdown`: Markdown table for documentation
+- `csv`: Comma-separated values for spreadsheets
+- `json`: JSON for programmatic processing
 
 # Contributing a Test
 
