@@ -186,6 +186,7 @@ def calculate_totals(groups: Dict[str, Dict[str, Dict[str, int]]],
 
 def output_table(groups: Dict[str, Dict[str, Dict[str, int]]],
                  compilers: List[str],
+                 results_by_compiler: Dict[str, List[Dict[str, Any]]],
                  format_type: str = 'table') -> str:
     """Generate output in the specified format."""
 
@@ -197,22 +198,24 @@ def output_table(groups: Dict[str, Dict[str, Dict[str, int]]],
 
     if format_type == 'csv':
         lines = []
-        lines.append(['Category'] + compilers + ['Total'])
+        lines.append(['Category'] + compilers)
 
         for cat in categories:
             row = [cat]
-            cat_pass = sum(groups[cat].get(c, {}).get('pass', 0) for c in compilers)
-            cat_total = sum(groups[cat].get(c, {}).get('total', 0) for c in compilers)
             for compiler in compilers:
                 counts = groups[cat].get(compiler, {'pass': 0, 'total': 0})
                 row.append(f"{counts['pass']}/{counts['total']}")
-            row.append(f"{cat_pass}/{cat_total}")
             lines.append(row)
+
+        # Totals row - calculate from actual unique test cases, not sum of cells
+        actual_totals = {compiler: {'pass': 0, 'total': 0} for compiler in compilers}
+        for compiler, results in results_by_compiler.items():
+            actual_totals[compiler]['total'] = len(results)
+            actual_totals[compiler]['pass'] = sum(1 for r in results if r['passed'])
 
         totals_row = ['Total']
         for compiler in compilers:
-            totals_row.append(f"{totals[compiler]['pass']}/{totals[compiler]['total']}")
-        totals_row.append(f"{sum(t['pass'] for t in totals.values())}/{sum(t['total'] for t in totals.values())}")
+            totals_row.append(f"{actual_totals[compiler]['pass']}/{actual_totals[compiler]['total']}")
         lines.append(totals_row)
 
         return '\n'.join(','.join(str(x) for x in row) for row in lines)
@@ -220,39 +223,63 @@ def output_table(groups: Dict[str, Dict[str, Dict[str, int]]],
     elif format_type == 'markdown':
         lines = []
 
+        # Calculate max category width based on actual categories
+        max_cat_width = max(len('Category'), *(len(cat) for cat in categories))
+        # Calculate max total for padding (assume max 3 digits)
+        max_total = max(
+            (counts['total'] for cat_data in groups.values()
+             for counts in cat_data.values()),
+            default=100
+        )
+        num_digits = max(3, len(str(max_total)))
+        # Cell content is "123 / 456" = digits + space + slash + space + digits = 2*num_digits + 3
+        cell_content_width = 2 * num_digits + 3
+
         # Header
-        header = '| Category | ' + ' | '.join(f'{c:^12}' for c in compilers) + ' |'
+        header = f'| {"Category":<{max_cat_width}} | ' + ' | '.join(f'{c:>{cell_content_width}}' for c in compilers) + ' |'
         lines.append(header)
 
-        # Separator
-        sep = '|-' + '-' * 10 + '|-' + '-|-'.join('-' * 12 for _ in compilers) + '-|'
+        # Separator - aligns with header column widths
+        sep = f'|:{ "-" * max_cat_width }:-|' + ':'.join(f'{"-" * cell_content_width}' for _ in compilers) + ':|'
         lines.append(sep)
 
         # Data rows
         for cat in categories:
-            row = f'| {cat:<10} |'
+            row = f'| {cat:<{max_cat_width}} |'
             for compiler in compilers:
                 if compiler in groups[cat]:
                     counts = groups[cat][compiler]
-                    row += f' {counts["pass"]}/{counts["total"]:^10} |'
+                    # Format like "123 / 456" with consistent spacing
+                    cell = f'{counts["pass"]:>{num_digits}} / {counts["total"]:>{num_digits}}'
+                    row += f' {cell:>{cell_content_width}} |'
                 else:
-                    row += f' {"-":^10} |'
+                    row += f' {"-":^{cell_content_width}} |'
             lines.append(row)
 
         # Separator before totals
         lines.append(sep)
 
-        # Totals row
-        totals_row = '| Total |'
+        # Totals row - calculate from actual unique test cases, not sum of cells
+        actual_totals = {compiler: {'pass': 0, 'total': 0} for compiler in compilers}
+        for compiler, results in results_by_compiler.items():
+            actual_totals[compiler]['total'] = len(results)
+            actual_totals[compiler]['pass'] = sum(1 for r in results if r['passed'])
+
+        totals_row = f'| {"Total":<{max_cat_width}} |'
         for compiler in compilers:
-            count_str = f"{totals[compiler]['pass']}/{totals[compiler]['total']}"
-            totals_row += f' {count_str:^10} |'
+            totals_row += f' {actual_totals[compiler]["pass"]:>{num_digits}} / {actual_totals[compiler]["total"]:>{num_digits}} |'
         lines.append(totals_row)
 
         return '\n'.join(lines)
 
     elif format_type == 'json':
-        output = {'groups': {}, 'totals': totals}
+        # Calculate actual totals from unique test cases, not sum of cells
+        actual_totals = {compiler: {'pass': 0, 'total': 0} for compiler in compilers}
+        for compiler, results in results_by_compiler.items():
+            actual_totals[compiler]['total'] = len(results)
+            actual_totals[compiler]['pass'] = sum(1 for r in results if r['passed'])
+
+        output = {'groups': {}, 'totals': actual_totals}
         for cat, compilers_data in groups.items():
             output['groups'][cat] = {}
             for compiler in compilers:
@@ -262,30 +289,52 @@ def output_table(groups: Dict[str, Dict[str, Dict[str, int]]],
     else:  # 'table' format (human-readable)
         lines = []
 
+        # Calculate max category width based on actual categories
+        max_cat_width = max(len('Category'), *(len(cat) for cat in categories))
+        # Calculate max total for padding (assume max 3 digits)
+        max_total = max(
+            (counts['total'] for cat_data in groups.values()
+             for counts in cat_data.values()),
+            default=100
+        )
+        num_digits = max(3, len(str(max_total)))
+        # Cell content is " 123 / 456 " = space + digits + space + slash + space + digits + space
+        # = 1 + num_digits + 1 + 1 + 1 + num_digits + 1 = 2*num_digits + 6
+        # But we want " 123 / 456" without trailing space = 2*num_digits + 5
+        cell_content_width = 2 * num_digits + 5
+
         # Header
-        header = f"{'Category':<12} | " + ' | '.join(f'{c:>12}' for c in compilers)
+        header = f"{'Category':<{max_cat_width}} | " + ' | '.join(f'{c:>{cell_content_width}}' for c in compilers)
         lines.append(header)
-        lines.append('-' * (12 + 3 + 13 * len(compilers)))
+        lines.append('-' * (max_cat_width + 3 + (cell_content_width + 2) * len(compilers)))
 
         # Data rows
         for cat in categories:
-            row = f"{cat:<12} |"
+            row = f"{cat:<{max_cat_width}} |"
             for compiler in compilers:
                 if compiler in groups[cat]:
                     counts = groups[cat][compiler]
-                    row += f' {counts["pass"]}/{counts["total"]:>10} |'
+                    # Format like "123 / 456" with consistent spacing
+                    cell = f'{counts["pass"]:>{num_digits}} / {counts["total"]:>{num_digits}}'
+                    # Pad cell to cell_content_width (same width as header column)
+                    row += f'{cell:>{cell_content_width}} |'
                 else:
-                    row += f' {"-":>12} |'
+                    # Pad dash to cell_content_width
+                    row += f'{"-":^{cell_content_width}} |'
             lines.append(row)
 
         # Separator before totals
-        lines.append('-' * (12 + 3 + 13 * len(compilers)))
+        lines.append('-' * (max_cat_width + 3 + (cell_content_width + 2) * len(compilers)))
 
-        # Totals row
-        totals_row = f"{'Total':<12} |"
+        # Totals row - calculate from actual unique test cases, not sum of cells
+        actual_totals = {compiler: {'pass': 0, 'total': 0} for compiler in compilers}
+        for compiler, results in results_by_compiler.items():
+            actual_totals[compiler]['total'] = len(results)
+            actual_totals[compiler]['pass'] = sum(1 for r in results if r['passed'])
+
+        totals_row = f"{'Total':<{max_cat_width}} |"
         for compiler in compilers:
-            count_str = f"{totals[compiler]['pass']}/{totals[compiler]['total']}"
-            totals_row += f' {count_str:>10} |'
+            totals_row += f' {actual_totals[compiler]["pass"]:>{num_digits}} / {actual_totals[compiler]["total"]:>{num_digits}} |'
         lines.append(totals_row)
 
         return '\n'.join(lines)
@@ -327,7 +376,7 @@ def main():
         groups = group_by_revision(results_by_compiler)
 
     # Output in requested format
-    output = output_table(groups, compilers, args.format)
+    output = output_table(groups, compilers, results_by_compiler, args.format)
     print(output)
 
 
