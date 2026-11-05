@@ -22,51 +22,27 @@ import argparse
 import os
 import sys
 import json
+import yaml
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
 
-def parse_outcome_file(outcome_path: str) -> Optional[Dict[str, Any]]:
-    """Parse an outcome.txt file and extract relevant fields."""
-    try:
-        with open(outcome_path, 'r') as f:
-            content = f.read()
+def parse_outcome_file(outcome_path: str) -> Dict[str, Any]:
+    """Parse an outcome.yml file and extract relevant fields."""
+    with open(outcome_path, 'r') as f:
+        data = yaml.safe_load(f)
 
-        result = {
-            'passed': False,
-            'allowed_failure': False,
-            'features': [],
-            'requires_revision': '',
-            'feature_sections': [],
-            'title': ''
-        }
-
-        for line in content.split('\n'):
-            if line.startswith('Case:'):
-                result['title'] = line.split(':', 1)[1].strip()
-            elif line.startswith('Passed:'):
-                result['passed'] = line.split(':', 1)[1].strip().lower() == 'true'
-            elif line.startswith('Failure Acceptable?'):
-                if ':' in line:
-                    result['allowed_failure'] = line.split(':', 1)[1].strip().lower() == 'yes'
-                else:
-                    result['allowed_failure'] = line.split('?', 1)[1].strip().lower() == 'yes'
-            elif line.startswith('Features:'):
-                features_str = line.split(':', 1)[1].strip()
-                if features_str and features_str != '[]':
-                    features = features_str.strip('[]').replace("'", '').replace('"', '').split(', ')
-                    result['features'] = [f.strip() for f in features if f.strip()]
-            elif line.startswith('Requires Revision:'):
-                result['requires_revision'] = line.split(':', 1)[1].strip()
-            elif line.startswith('Feature Sections:'):
-                sections_str = line.split(':', 1)[1].strip()
-                if sections_str and sections_str != '[]':
-                    sections = sections_str.strip('[]').replace("'", '').replace('"', '').split(', ')
-                    result['feature_sections'] = [s.strip() for s in sections if s.strip()]
-
-        return result
-    except Exception:
-        return None
+    return {
+        'passed': data.get('passed'),
+        'allowed_failure': data.get('allowed_failure'),
+        'features': data.get('features'),
+        'requires_revision': data.get('requires_revision'),
+        'feature_sections': data.get('feature_sections'),
+        'title': data.get('title'),
+        'commands': data.get('commands'),
+        'stdout': data.get('stdout'),
+        'stderr': data.get('stderr'),
+    }
 
 
 def collect_results(result_dirs: List[str]) -> Dict[str, List[Dict[str, Any]]]:
@@ -74,7 +50,7 @@ def collect_results(result_dirs: List[str]) -> Dict[str, List[Dict[str, Any]]]:
     Collect results from one or more compiler result directories.
     Returns a dict mapping compiler name -> list of test results.
 
-    Assumes format: results/<compiler_name>/test_category/.../outcome.txt
+    Assumes format: results/<compiler_name>/test_category/.../outcome.yml
     The compiler name is extracted from the directory path.
     """
     compiler_results: Dict[str, List[Dict[str, Any]]] = {}
@@ -89,19 +65,18 @@ def collect_results(result_dirs: List[str]) -> Dict[str, List[Dict[str, Any]]]:
 
         compiler_results[compiler_name] = []
 
-        # Find all outcome.txt files
+        # Find all outcome.yml files
         for root, dirs, files in os.walk(result_dir):
-            if 'outcome.txt' in files:
-                outcome_path = os.path.join(root, 'outcome.txt')
+            if 'outcome.yml' in files:
+                outcome_path = os.path.join(root, 'outcome.yml')
                 result = parse_outcome_file(outcome_path)
-                if result:
-                    # Extract directory path relative to result_dir
-                    rel_path = os.path.relpath(root, result_dir)
-                    # Get top-level category (first component of path)
-                    parts = rel_path.split(os.sep)
-                    result['directory'] = parts[0] if parts and parts[0] else ''
-                    result['full_path'] = rel_path
-                    compiler_results[compiler_name].append(result)
+                # Extract directory path relative to result_dir
+                rel_path = os.path.relpath(root, result_dir)
+                # Get top-level category (first component of path)
+                parts = rel_path.split(os.sep)
+                result['directory'] = parts[0] if parts and parts[0] else ''
+                result['full_path'] = rel_path
+                compiler_results[compiler_name].append(result)
 
     return compiler_results
 
