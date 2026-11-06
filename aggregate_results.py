@@ -19,98 +19,79 @@ Grouping options:
 """
 
 import argparse
-import os
 import sys
-import json
-import yaml
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List
+from framework.test_result import TestResult
 
 
-def parse_outcome_file(outcome_path: str) -> Dict[str, Any]:
-    """Parse an outcome.yml file and extract relevant fields."""
-    with open(outcome_path, 'r') as f:
-        data = yaml.safe_load(f)
-
-    return {
-        'passed': data.get('passed'),
-        'allowed_failure': data.get('allowed_failure'),
-        'features': data.get('features'),
-        'requires_revision': data.get('requires_revision'),
-        'feature_sections': data.get('feature_sections'),
-        'title': data.get('title'),
-        'commands': data.get('commands'),
-        'stdout': data.get('stdout'),
-        'stderr': data.get('stderr'),
-    }
-
-
-def collect_results(result_dirs: List[str]) -> Dict[str, List[Dict[str, Any]]]:
+def collect_results(result_dirs: List[str]) -> Dict[str, List[TestResult]]:
     """
     Collect results from one or more compiler result directories.
     Returns a dict mapping compiler name -> list of test results.
-
-    Assumes format: results/<compiler_name>/test_category/.../outcome.yml
-    The compiler name is extracted from the directory path.
     """
-    compiler_results: Dict[str, List[Dict[str, Any]]] = {}
+    compiler_results: Dict[str, List[TestResult]] = {}
 
     for result_dir in result_dirs:
-        # Extract compiler name from path (second-to-last component)
         path = Path(result_dir)
-        parts = list(path.parts)
-
-        # Get compiler name from the directory name
         compiler_name = path.name
 
         compiler_results[compiler_name] = []
 
-        # Find all outcome.yml files
-        for root, dirs, files in os.walk(result_dir):
-            if 'outcome.yml' in files:
-                outcome_path = os.path.join(root, 'outcome.yml')
-                result = parse_outcome_file(outcome_path)
-                # Extract directory path relative to result_dir
-                rel_path = os.path.relpath(root, result_dir)
-                # Get top-level category (first component of path)
-                parts = rel_path.split(os.sep)
-                result['directory'] = parts[0] if parts and parts[0] else ''
-                result['full_path'] = rel_path
-                compiler_results[compiler_name].append(result)
+        # Find all outcome.yml files and parse them using TestResult
+        for outcome_path in path.rglob('outcome.yml'):
+            result = TestResult.from_yaml(outcome_path.read_text())
+            # Calculate relative path components
+            rel_path = outcome_path.parent.relative_to(path)
+            result.directory = rel_path.parts[0]
+            result.full_path = str(rel_path)
+            compiler_results[compiler_name].append(result)
 
     return compiler_results
 
 
-def group_by_directory(results_by_compiler: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Dict[str, Dict[str, int]]]:
-    """Group results by directory (top-level category like 'basic', 'io', etc.)."""
+def group_results(
+    results_by_compiler: Dict[str, List[TestResult]],
+    key_func: callable
+) -> Dict[str, Dict[str, Dict[str, int]]]:
+    """
+    Group results by a key derived from each result.
+
+    Args:
+        results_by_compiler: Dict mapping compiler name to list of results
+        key_func: Function that extracts the grouping key from a TestResult
+
+    Returns:
+        Dict mapping group key -> compiler -> {pass, total counts}
+    """
     groups: Dict[str, Dict[str, Dict[str, int]]] = {}
 
     for compiler, results in results_by_compiler.items():
         for result in results:
-            directory = result.get('directory', '') or 'unknown'
+            key = key_func(result)
 
-            if directory not in groups:
-                groups[directory] = {}
+            if key not in groups:
+                groups[key] = {}
 
-            if compiler not in groups[directory]:
-                groups[directory][compiler] = {'pass': 0, 'total': 0}
+            if compiler not in groups[key]:
+                groups[key][compiler] = {'pass': 0, 'total': 0}
 
-            groups[directory][compiler]['total'] += 1
-            if result['passed']:
-                groups[directory][compiler]['pass'] += 1
+            groups[key][compiler]['total'] += 1
+            if not result.failed():
+                groups[key][compiler]['pass'] += 1
 
     return groups
 
 
-def group_by_feature(results_by_compiler: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Dict[str, Dict[str, int]]]:
-    """Group results by feature (each test counts for each feature it has)."""
+def _group_by_feature(
+    results_by_compiler: Dict[str, List[TestResult]]
+) -> Dict[str, Dict[str, Dict[str, int]]]:
+    """Special grouping for features - each test counts for each feature it has."""
     groups: Dict[str, Dict[str, Dict[str, int]]] = {}
 
     for compiler, results in results_by_compiler.items():
         for result in results:
-            features = result.get('features', []) or ['none']
-
-            for feature in features:
+            for feature in result.features or ['none']:
                 if feature not in groups:
                     groups[feature] = {}
 
@@ -118,203 +99,82 @@ def group_by_feature(results_by_compiler: Dict[str, List[Dict[str, Any]]]) -> Di
                     groups[feature][compiler] = {'pass': 0, 'total': 0}
 
                 groups[feature][compiler]['total'] += 1
-                if result['passed']:
+                if not result.failed():
                     groups[feature][compiler]['pass'] += 1
 
     return groups
 
 
-def group_by_revision(results_by_compiler: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Dict[str, Dict[str, int]]]:
-    """Group results by revision (requires_revision field)."""
-    groups: Dict[str, Dict[str, Dict[str, int]]] = {}
-
-    for compiler, results in results_by_compiler.items():
-        for result in results:
-            revision = result.get('requires_revision', '') or 'unknown'
-
-            if revision not in groups:
-                groups[revision] = {}
-
-            if compiler not in groups[revision]:
-                groups[revision][compiler] = {'pass': 0, 'total': 0}
-
-            groups[revision][compiler]['total'] += 1
-            if result['passed']:
-                groups[revision][compiler]['pass'] += 1
-
-    return groups
+def calculate_actual_totals(
+    results_by_compiler: Dict[str, List[TestResult]]
+) -> Dict[str, Dict[str, int]]:
+    """Calculate totals from actual unique test cases per compiler."""
+    return {
+        compiler: {
+            'total': len(results),
+            'pass': sum(1 for r in results if not r.failed())
+        }
+        for compiler, results in results_by_compiler.items()
+    }
 
 
-def calculate_totals(groups: Dict[str, Dict[str, Dict[str, int]]],
-                     compilers: List[str]) -> Dict[str, Dict[str, int]]:
-    """Calculate total counts across all groups for each compiler."""
-    totals = {compiler: {'pass': 0, 'total': 0} for compiler in compilers}
-
-    for directory, compiler_counts in groups.items():
-        for compiler in compilers:
-            if compiler in compiler_counts:
-                totals[compiler]['pass'] += compiler_counts[compiler]['pass']
-                totals[compiler]['total'] += compiler_counts[compiler]['total']
-
-    return totals
-
-
-def output_table(groups: Dict[str, Dict[str, Dict[str, int]]],
-                 compilers: List[str],
-                 results_by_compiler: Dict[str, List[Dict[str, Any]]],
-                 format_type: str = 'table') -> str:
+def output_table(
+    groups: Dict[str, Dict[str, Dict[str, int]]],
+    compilers: List[str],
+    actual_totals: Dict[str, Dict[str, int]],
+    format_type: str = 'table'
+) -> str:
     """Generate output in the specified format."""
+    from tabulate import tabulate
 
-    # Collect all categories and sort them
     categories = sorted(groups.keys())
 
-    # Calculate totals
-    totals = calculate_totals(groups, compilers)
+    if not categories:
+        return ''
+
+    # Build table data
+    table_data = []
+    for cat in categories:
+        row = {'Category': cat}
+        for compiler in compilers:
+            counts = groups[cat][compiler]
+            percent = counts['pass'] / counts['total']
+            row[compiler] = f"{counts['pass']:<3} / {counts['total']:<3} ({percent:6.1%})"
+        table_data.append(row)
+
+    # Add totals row
+    totals_row = {'Category': 'Total'}
+    for compiler in compilers:
+        percent = actual_totals[compiler]['pass'] / actual_totals[compiler]['total']
+        totals_row[compiler] = f"{actual_totals[compiler]['pass']:<3} / {actual_totals[compiler]['total']:<3} ({percent:6.1%})"
+    table_data.append(totals_row)
+
+    # Convert to list of lists for tabulate
+    headers = ['Category'] + compilers
+    rows = [[d['Category']] + [d[c] for c in compilers] for d in table_data]
 
     if format_type == 'csv':
-        lines = []
-        lines.append(['Category'] + compilers)
-
-        for cat in categories:
-            row = [cat]
-            for compiler in compilers:
-                counts = groups[cat].get(compiler, {'pass': 0, 'total': 0})
-                row.append(f"{counts['pass']}/{counts['total']}")
-            lines.append(row)
-
-        # Totals row - calculate from actual unique test cases, not sum of cells
-        actual_totals = {compiler: {'pass': 0, 'total': 0} for compiler in compilers}
-        for compiler, results in results_by_compiler.items():
-            actual_totals[compiler]['total'] = len(results)
-            actual_totals[compiler]['pass'] = sum(1 for r in results if r['passed'])
-
-        totals_row = ['Total']
-        for compiler in compilers:
-            totals_row.append(f"{actual_totals[compiler]['pass']}/{actual_totals[compiler]['total']}")
-        lines.append(totals_row)
-
-        return '\n'.join(','.join(str(x) for x in row) for row in lines)
-
-    elif format_type == 'markdown':
-        lines = []
-
-        # Calculate max category width based on actual categories
-        max_cat_width = max(len('Category'), *(len(cat) for cat in categories))
-        # Calculate max total for padding (assume max 3 digits)
-        max_total = max(
-            (counts['total'] for cat_data in groups.values()
-             for counts in cat_data.values()),
-            default=100
-        )
-        num_digits = max(3, len(str(max_total)))
-        # Cell content is "123 / 456" = digits + space + slash + space + digits = 2*num_digits + 3
-        cell_content_width = 2 * num_digits + 3
-
-        # Header
-        header = f'| {"Category":<{max_cat_width}} | ' + ' | '.join(f'{c:>{cell_content_width}}' for c in compilers) + ' |'
-        lines.append(header)
-
-        # Separator - aligns with header column widths
-        sep = f'|:{ "-" * max_cat_width }:-|' + ':'.join(f'{"-" * cell_content_width}' for _ in compilers) + ':|'
-        lines.append(sep)
-
-        # Data rows
-        for cat in categories:
-            row = f'| {cat:<{max_cat_width}} |'
-            for compiler in compilers:
-                if compiler in groups[cat]:
-                    counts = groups[cat][compiler]
-                    # Format like "123 / 456" with consistent spacing
-                    cell = f'{counts["pass"]:>{num_digits}} / {counts["total"]:>{num_digits}}'
-                    row += f' {cell:>{cell_content_width}} |'
-                else:
-                    row += f' {"-":^{cell_content_width}} |'
-            lines.append(row)
-
-        # Separator before totals
-        lines.append(sep)
-
-        # Totals row - calculate from actual unique test cases, not sum of cells
-        actual_totals = {compiler: {'pass': 0, 'total': 0} for compiler in compilers}
-        for compiler, results in results_by_compiler.items():
-            actual_totals[compiler]['total'] = len(results)
-            actual_totals[compiler]['pass'] = sum(1 for r in results if r['passed'])
-
-        totals_row = f'| {"Total":<{max_cat_width}} |'
-        for compiler in compilers:
-            totals_row += f' {actual_totals[compiler]["pass"]:>{num_digits}} / {actual_totals[compiler]["total"]:>{num_digits}} |'
-        lines.append(totals_row)
-
-        return '\n'.join(lines)
+        import io
+        import csv
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(headers)
+        writer.writerows(rows)
+        return output.getvalue().strip()
 
     elif format_type == 'json':
-        # Calculate actual totals from unique test cases, not sum of cells
-        actual_totals = {compiler: {'pass': 0, 'total': 0} for compiler in compilers}
-        for compiler, results in results_by_compiler.items():
-            actual_totals[compiler]['total'] = len(results)
-            actual_totals[compiler]['pass'] = sum(1 for r in results if r['passed'])
-
+        import json
         output = {'groups': {}, 'totals': actual_totals}
         for cat, compilers_data in groups.items():
             output['groups'][cat] = {}
             for compiler in compilers:
-                output['groups'][cat][compiler] = compilers_data.get(compiler, {'pass': 0, 'total': 0})
+                output['groups'][cat][compiler] = compilers_data[compiler]
         return json.dumps(output, indent=2)
 
-    else:  # 'table' format (human-readable)
-        lines = []
-
-        # Calculate max category width based on actual categories
-        max_cat_width = max(len('Category'), *(len(cat) for cat in categories))
-        # Calculate max total for padding (assume max 3 digits)
-        max_total = max(
-            (counts['total'] for cat_data in groups.values()
-             for counts in cat_data.values()),
-            default=100
-        )
-        num_digits = max(3, len(str(max_total)))
-        # Cell content is " 123 / 456 " = space + digits + space + slash + space + digits + space
-        # = 1 + num_digits + 1 + 1 + 1 + num_digits + 1 = 2*num_digits + 6
-        # But we want " 123 / 456" without trailing space = 2*num_digits + 5
-        cell_content_width = 2 * num_digits + 5
-
-        # Header
-        header = f"{'Category':<{max_cat_width}} | " + ' | '.join(f'{c:>{cell_content_width}}' for c in compilers)
-        lines.append(header)
-        lines.append('-' * (max_cat_width + 3 + (cell_content_width + 2) * len(compilers)))
-
-        # Data rows
-        for cat in categories:
-            row = f"{cat:<{max_cat_width}} |"
-            for compiler in compilers:
-                if compiler in groups[cat]:
-                    counts = groups[cat][compiler]
-                    # Format like "123 / 456" with consistent spacing
-                    cell = f'{counts["pass"]:>{num_digits}} / {counts["total"]:>{num_digits}}'
-                    # Pad cell to cell_content_width (same width as header column)
-                    row += f'{cell:>{cell_content_width}} |'
-                else:
-                    # Pad dash to cell_content_width
-                    row += f'{"-":^{cell_content_width}} |'
-            lines.append(row)
-
-        # Separator before totals
-        lines.append('-' * (max_cat_width + 3 + (cell_content_width + 2) * len(compilers)))
-
-        # Totals row - calculate from actual unique test cases, not sum of cells
-        actual_totals = {compiler: {'pass': 0, 'total': 0} for compiler in compilers}
-        for compiler, results in results_by_compiler.items():
-            actual_totals[compiler]['total'] = len(results)
-            actual_totals[compiler]['pass'] = sum(1 for r in results if r['passed'])
-
-        totals_row = f"{'Total':<{max_cat_width}} |"
-        for compiler in compilers:
-            totals_row += f' {actual_totals[compiler]["pass"]:>{num_digits}} / {actual_totals[compiler]["total"]:>{num_digits}} |'
-        lines.append(totals_row)
-
-        return '\n'.join(lines)
-
-    return ''
+    else:
+        # table or markdown format
+        table = tabulate(rows, headers=headers, tablefmt=format_type)
+        return table
 
 
 def main():
@@ -322,13 +182,23 @@ def main():
         description='Aggregate test results from multiple compiler result directories.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument('result_dirs', nargs='+', help='Result directories (e.g., results/gfortran results/intel)')
-    parser.add_argument('--group-by', choices=['directory', 'feature', 'revision'],
-                        default='directory',
-                        help='How to group the results')
-    parser.add_argument('--format', choices=['table', 'markdown', 'csv', 'json'],
-                        default='table',
-                        help='Output format')
+    parser.add_argument(
+        'result_dirs',
+        nargs='+',
+        help='Result directories (e.g., results/gfortran results/intel)'
+    )
+    parser.add_argument(
+        '--group-by',
+        choices=['directory', 'feature', 'revision'],
+        default='directory',
+        help='How to group the results'
+    )
+    parser.add_argument(
+        '--format',
+        choices=['table', 'markdown', 'csv', 'json'],
+        default='table',
+        help='Output format'
+    )
 
     args = parser.parse_args()
 
@@ -344,14 +214,17 @@ def main():
 
     # Group results
     if args.group_by == 'directory':
-        groups = group_by_directory(results_by_compiler)
+        groups = group_results(results_by_compiler, lambda r: r.directory or 'unknown')
     elif args.group_by == 'feature':
-        groups = group_by_feature(results_by_compiler)
+        groups = _group_by_feature(results_by_compiler)
     elif args.group_by == 'revision':
-        groups = group_by_revision(results_by_compiler)
+        groups = group_results(results_by_compiler, lambda r: r.requires_revision or 'unknown')
 
-    # Output in requested format
-    output = output_table(groups, compilers, results_by_compiler, args.format)
+    # Calculate actual totals from unique test cases
+    actual_totals = calculate_actual_totals(results_by_compiler)
+
+    # Generate output
+    output = output_table(groups, compilers, actual_totals, args.format)
     print(output)
 
 

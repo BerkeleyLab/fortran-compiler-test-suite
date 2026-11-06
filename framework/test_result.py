@@ -51,6 +51,23 @@ class TestResult:
     def to_yaml(self) -> str:
         return yaml.dump(self.to_dict(), default_flow_style=False, sort_keys=False)
 
+    @classmethod
+    def from_yaml(cls, yaml_str: str) -> 'TestResult':
+        """Parse a TestResult from YAML string."""
+        data = yaml.safe_load(yaml_str)
+        checks = [Check(c['description'], c['passed']) for c in data.get('checks')]
+        return cls(
+            title=data.get('title'),
+            features=data.get('features'),
+            checks=checks,
+            commands=data.get('commands'),
+            stdout=data.get('stdout'),
+            stderr=data.get('stderr'),
+            allowed_failure=data.get('allowed_failure'),
+            requires_revision=data.get('requires_revision'),
+            feature_sections=data.get('feature_sections')
+        )
+
     def __repr__(self):
         lines = [
             "Case: {title}".format(title=self.title),
